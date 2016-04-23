@@ -1,42 +1,75 @@
-organization := "com.softwaremill.stringmask"
-name := "stringmask"
+import sbt.Keys._
 
-version := "1.1.0-SNAPSHOT"
+import scalariform.formatter.preferences._
 
-crossScalaVersions := Seq("2.10.6", "2.11.8")
-
-scalaVersion := "2.11.8"
-
-libraryDependencies ++= Seq(
-  "org.scala-lang" % "scala-reflect" % scalaVersion.value,
-  "org.scala-lang" % "scala-compiler" % scalaVersion.value,
-  "org.typelevel" %% "macro-compat" % "1.1.1",
-  "org.scalatest" %% "scalatest" % "2.2.6" % "test"
+lazy val commonSettings = scalariformSettings ++ Seq(
+    organization := "com.softwaremill.stringmask",
+    version := "2.0.0-SNAPSHOT",
+    crossScalaVersions := Seq("2.10.6", "2.11.8"),
+    scalaVersion := "2.11.8",
+    ScalariformKeys.preferences in ThisBuild := ScalariformKeys.preferences.value
+        .setPreference(DoubleIndentClassDeclaration, true)
+        .setPreference(PreserveSpaceBeforeArguments, true)
+        .setPreference(CompactControlReadability, true)
+        .setPreference(SpacesAroundMultiImports, false)
 )
 
-publishTo := {
-  val nexus = "https://oss.sonatype.org/"
-  if (version.value.trim.endsWith("SNAPSHOT"))
-    Some("snapshots" at nexus + "content/repositories/snapshots")
-  else
-    Some("releases" at nexus + "service/local/staging/deploy/maven2")
-}
-credentials += Credentials(Path.userHome / ".ivy2" / ".credentials")
-publishMavenStyle := true
-publishArtifact in Test := false
-pomIncludeRepository := { _ => false }
-pomExtra :=
-  <scm>
-    <url>git@github.com:softwaremill/stringmask.git</url>
-    <connection>scm:git:git@github.com:softwaremill/stringmask.git</connection>
-  </scm>
-    <developers>
-      <developer>
-        <id>kciesielski</id>
-        <name>Krzysztof Ciesielski</name>
-      </developer>
-    </developers>
-licenses := ("Apache2", new java.net.URL("http://www.apache.org/licenses/LICENSE-2.0.txt")) :: Nil
-homepage := Some(new java.net.URL("http://www.softwaremill.com"))
+lazy val root = (project in file("."))
+    .aggregate(annotation, scalacPlugin, tests)
+    .settings(commonSettings)
+    .settings(name := "scalac-stringmask-plugin")
 
-addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full)
+
+lazy val annotation = (project in file("annotation"))
+    .settings(commonSettings)
+    .settings(name := "stringmask-annotation")
+    .settings(publishArtifact := true)
+
+lazy val scalacPlugin = (project in file("scalacPlugin"))
+    .dependsOn(annotation)
+    .settings(commonSettings)
+    .settings(
+        name := "stringmask-scalac-plugin",
+        exportJars := true
+    )
+    .settings(
+        libraryDependencies ++= Seq(
+            "org.scala-lang" % "scala-compiler" % scalaVersion.value
+        )
+    )
+
+lazy val tests = (project in file("tests"))
+    .dependsOn(scalacPlugin)
+    .settings(commonSettings)
+    .settings(
+        scalacOptions <+= (artifactPath in(scalacPlugin, Compile, packageBin)).map { file =>
+            s"-Xplugin:${file.getAbsolutePath}"
+        }
+    ).settings(
+    libraryDependencies ++= Seq(
+        "org.scalatest" %% "scalatest" % "2.2.6"
+    )
+)
+
+publishMavenStyle in ThisBuild := true
+publishArtifact in ThisBuild := true
+publishArtifact in Test in ThisBuild := false
+pomIncludeRepository := { _ => false }
+pomExtra in ThisBuild :=
+    <scm>
+        <url>git@github.com:softwaremill/stringmask.git</url>
+        <connection>scm:git:git@github.com:softwaremill/stringmask.git</connection>
+    </scm>
+        <developers>
+            <developer>
+                <id>kciesielski</id>
+                <name>Krzysztof Ciesielski</name>
+            </developer>
+            <developer>
+                <id>mkubala</id>
+                <name>Marcin Kubala</name>
+            </developer>
+        </developers>
+
+licenses in ThisBuild := ("Apache2", new java.net.URL("http://www.apache.org/licenses/LICENSE-2.0.txt")) :: Nil
+homepage in ThisBuild := Some(new java.net.URL("http://www.softwaremill.com"))

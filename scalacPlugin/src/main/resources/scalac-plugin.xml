@@ -1,0 +1,4 @@
+<plugin>
+	<name>stringmask</name>
+	<classname>com.softwaremill.stringmask.StringMaskPlugin</classname>
+</plugin>
