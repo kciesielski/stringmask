@@ -8,8 +8,6 @@ class StringMaskComponent(val global: Global) extends PluginComponent with Trans
 
   override val phaseName: String = "stringmask"
 
-  override val description: String = "Mask confidential case class fields in .toString()"
-
   override val runsAfter: List[String] = List("parser")
 
   // When runs after typer phase, might have problems with accessing ValDefs' annotations.
@@ -38,20 +36,20 @@ class StringMaskComponent(val global: Global) extends PluginComponent with Trans
 
     private def containsCustomToStringDef(classDef: global.ClassDef): Boolean =
       classDef.impl.body.exists {
-        case DefDef(_, TermName("toString"), _, _, _, _) => true
+        case d: DefDef => d.name.decode == "toString"
         case _ => false
       }
 
     private def extractParamsAnnotatedWithMask(classDef: ClassDef): Option[List[Tree]] =
       classDef.impl.body.collectFirst {
-        case DefDef(_, TermName("<init>"), _, vparamss, _, _) if vparamss.headOption.exists(containsMaskedParams) =>
-          vparamss.headOption.map { firstParamsGroup =>
+        case d: DefDef if d.name.decode == "<init>" && d.vparamss.headOption.exists(containsMaskedParams) =>
+          d.vparamss.headOption.map { firstParamsGroup =>
             firstParamsGroup.foldLeft(List.empty[Tree]) {
               case (accList, fieldTree) =>
                 val newFieldTree = if (hasMaskAnnotation(fieldTree)) {
                   Literal(Constant("***"))
                 } else {
-                  q"${fieldTree.name}.toString"
+                  Apply(Select(Ident(fieldTree.name), "toString"), Nil)
                 }
                 accList :+ newFieldTree
             }
@@ -62,7 +60,7 @@ class StringMaskComponent(val global: Global) extends PluginComponent with Trans
       params.exists(hasMaskAnnotation)
 
     private def hasMaskAnnotation(param: ValDef): Boolean =
-      param.mods.hasAnnotationNamed(TypeName("mask"))
+      param.mods.hasAnnotationNamed("mask")
 
     private def overrideToStringDef(classDef: global.ClassDef)(newToStringImpl: Tree): Tree = {
       val className = classDef.name
@@ -73,9 +71,11 @@ class StringMaskComponent(val global: Global) extends PluginComponent with Trans
     }
 
     private def buildNewToStringTree(className: TypeName)(fields: List[Tree]): Tree = {
-      val treesAsTuple = Apply(Select(Ident(TermName("scala")), TermName("Tuple" + fields.length)), fields)
+      val treesAsTuple = Apply(Select(Ident("scala"), "Tuple" + fields.length), fields)
       val typeNameStrTree = Literal(Constant(className.toString))
-      q"""override def toString = $typeNameStrTree + $treesAsTuple"""
+
+      DefDef(Modifiers(Flag.OVERRIDE), "toString": TermName, List(), List(), TypeTree(),
+        Apply(Select(typeNameStrTree, "$plus": TermName), List(treesAsTuple)))
     }
 
   }
